@@ -29,7 +29,7 @@ topic; delete a note that proves wrong or that a document now states.
   a lowercase `m` a left press and release, `32` a drag, 16 added for Ctrl.
 - Smoothness is read, not guessed: send a run of keys with `send-keys -l` and
   time until the status line shows where they end, as a pan at 400% of a
-  1600x1000 JPEG drew 80 steps in 249 ms on a 160x48 pane.
+  1600x1000 JPEG drew 80 steps in 253 ms on a 160x48 pane.
 
 ## The TUI
 
@@ -41,8 +41,36 @@ topic; delete a note that proves wrong or that a document now states.
   belongs to the app's goroutine once received, which alone mutates it (an
   `.aimg`'s converted cells). A test of the loader runs under `-race` once.
 
+## Conversion
+
+- `At` allocates for RGBA, NRGBA and YCbCr alone: a Paletted hands back its
+  palette's own interface and a Gray's one byte boxes without one, so reading
+  those two from their buffers took no allocation away and little time.
+- The sampler holds the image as typed pointers and switches on them: a function
+  value resolved once a conversion is an allocation itself, two with a Paletted's
+  table, and measured no faster. It reads through the typed accessors (`RGBAAt`,
+  `YCbCrAt`), which keep `At`'s offsets and arithmetic; indexing `Pix` by hand
+  measured 0.1 ms a window faster and must re-derive both, a chroma offset that
+  truncates toward zero left of the origin among them.
+- A change that must keep every cell is checked end to end: build `cmd/ascimage`
+  from both trees, `convert` the images under the toolchain's `src/image`
+  (`*/testdata`: the five 8-bit types, six YCbCr ratios, the 16-bit ones) in both
+  modes, and `cmp` the `.aimg` files.
+
 ## Measuring
 
+- A quadrant window is mostly the fit: `FitQuadrant` is four fifths of a 160x48
+  window's 2.8 ms, and placing its 30,720 samples costs 0.4 ms before one is
+  read, so how a pixel is read moves the window by a tenth. Background mode fits
+  nothing: time a change to the read there.
+- A shared container's timings swing a tenth from run to run. Build each tree's
+  test binary (`go test -c`), run them in turn on one core (`taskset -c`) a dozen
+  rounds, and compare with `benchstat` (`go install
+  golang.org/x/perf/cmd/benchstat@latest`, outside the module); the allocation
+  counts are exact from one run.
+- A figure is its container's: the same pan reads a quarter slower in one session
+  than in another. Read the before and the after in one session, and never set a
+  reading against a figure these documents give.
 - The compression figures in `format.md` come from 54 shapes over nine images:
   Go's `image/testdata/video-001.jpeg` and `image/png/testdata/benchRGB.png` from
   the toolchain, LibreOffice's gallery `personas/sand` preview and header, its

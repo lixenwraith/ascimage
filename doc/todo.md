@@ -19,16 +19,6 @@ aliases into noise. Averaging a few points inside each sample's footprint
 conversion keeps the cost on screen cells, about 3 ms for 7,500 cells today.
 The cells would differ from today's, so vif's sample is regenerated with it.
 
-### Read the common image types without image.At
-
-- Priority: P2
-- Affected files: `converter.go`
-
-`image.At` boxes each pixel, four allocations a cell (30,720 for a 160x48
-window, 3.2 ms). Reading `*image.YCbCr`, `*image.RGBA`, `*image.NRGBA`,
-`*image.Paletted` and `*image.Gray` directly, `At` the fallback, would take
-them away; measure the window before and after.
-
 ### Partly transparent cells
 
 - Priority: P2
@@ -38,6 +28,17 @@ A cell whose samples are partly transparent fits the transparent ones as black.
 A flag for a transparent background (bit 1, format version 2) would draw the
 opaque quadrants as the glyph's foreground over what lies beneath, as vif's
 walls and the TUI's backdrop already allow a whole cell.
+
+### Convert under a per-cell mask
+
+- Priority: P3
+- Affected files: `converter.go`
+
+A caller that draws its own glyphs over a frame needs only a mean background
+color under those cells, and a frame that changed in places needs only the
+changed cells converted again. A `ConvertRect` variant taking a per-cell mask
+of fit, mean color alone, or leave as is would close it; the fit is four
+fifths of a window's time.
 
 ## Format
 
@@ -61,6 +62,6 @@ the layout, in a new version.
 - Priority: P2. The cell aspect read from the terminal (`CSI 16 t`, a cell's
   pixels) where it answers, in place of `-aspect`.
 - Priority: P3. A pan that shifts the window's cells and converts only the strip
-  it exposes, today 3.1 ms a step at 160x48.
+  it exposes, today 3.2 ms a step at 160x48.
 - Priority: P3. A folder's preview: how many images it holds, or a sheet of
   their thumbnails.
