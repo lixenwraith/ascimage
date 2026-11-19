@@ -45,7 +45,6 @@ const (
 	ModeQuadrant
 )
 
-// String returns human-readable mode name
 func (m RenderMode) String() string {
 	switch m {
 	case ModeBackgroundOnly:
@@ -117,6 +116,17 @@ type sampler struct {
 	cellsW, cellsH int
 	gridW, gridH   int // samples across and down
 	mode           RenderMode
+
+	// img as the type it is, where at reads that type's buffer
+	rgba     *image.RGBA
+	nrgba    *image.NRGBA
+	ycbcr    *image.YCbCr
+	gray     *image.Gray
+	paletted *image.Paletted
+	palette  [256]struct { // paletted's entries as samples
+		rgb lcolor.RGB
+		ok  bool
+	}
 }
 
 func newSampler(img image.Image, cellsW, cellsH int, mode RenderMode) sampler {
@@ -127,14 +137,47 @@ func newSampler(img image.Image, cellsW, cellsH int, mode RenderMode) sampler {
 	if s.b.Empty() {
 		s.cellsW, s.cellsH = 0, 0
 	}
+	switch p := img.(type) {
+	case *image.RGBA:
+		s.rgba = p
+	case *image.NRGBA:
+		s.nrgba = p
+	case *image.YCbCr:
+		s.ycbcr = p
+	case *image.Gray:
+		s.gray = p
+	case *image.Paletted:
+		s.paletted = p
+		for i, c := range p.Palette[:min(len(p.Palette), len(s.palette))] {
+			if c != nil { // At panics on a nil entry only where a pixel names it
+				s.palette[i].rgb, s.palette[i].ok = sampleRGB(c)
+			}
+		}
+	}
 	return s
 }
 
+// at is sample (gx, gy). The decoders' 8-bit types are read from their buffers,
+// where At boxes a color at an allocation a sample, and any other through At;
+// each takes its color's own RGBA, which an 8-bit shortcut misses by one.
 func (s *sampler) at(gx, gy int) (lcolor.RGB, bool) {
 	srcW, srcH := int64(s.b.Dx()), int64(s.b.Dy())
-	sx := s.b.Min.X + int((int64(gx)*srcW+srcW/2)/int64(s.gridW))
-	sy := s.b.Min.Y + int((int64(gy)*srcH+srcH/2)/int64(s.gridH))
-	return sampleRGB(s.img.At(min(sx, s.b.Max.X-1), min(sy, s.b.Max.Y-1)))
+	x := min(s.b.Min.X+int((int64(gx)*srcW+srcW/2)/int64(s.gridW)), s.b.Max.X-1)
+	y := min(s.b.Min.Y+int((int64(gy)*srcH+srcH/2)/int64(s.gridH)), s.b.Max.Y-1)
+	switch {
+	case s.rgba != nil:
+		return unmultiply(s.rgba.RGBAAt(x, y).RGBA())
+	case s.nrgba != nil:
+		return unmultiply(s.nrgba.NRGBAAt(x, y).RGBA())
+	case s.ycbcr != nil:
+		return unmultiply(s.ycbcr.YCbCrAt(x, y).RGBA())
+	case s.gray != nil:
+		return unmultiply(s.gray.GrayAt(x, y).RGBA())
+	case s.paletted != nil:
+		e := s.palette[s.paletted.ColorIndexAt(x, y)]
+		return e.rgb, e.ok
+	}
+	return sampleRGB(s.img.At(x, y))
 }
 
 // cell is cell (x, y) in true color; one outside the grid, or one whose every
@@ -238,8 +281,9 @@ func colorDistanceSq(a, b lcolor.RGB) int {
 }
 
 // sampleRGB is a pixel's color, its alpha divided out, and whether it shows at all
-func sampleRGB(c color.Color) (lcolor.RGB, bool) {
-	r, g, b, a := c.RGBA()
+func sampleRGB(c color.Color) (lcolor.RGB, bool) { return unmultiply(c.RGBA()) }
+
+func unmultiply(r, g, b, a uint32) (lcolor.RGB, bool) {
 	if a == 0 {
 		return lcolor.RGB{}, false
 	}
