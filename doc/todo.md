@@ -16,7 +16,7 @@ Priorities: P1 is wanted next, P2 is convenient follow-up, and P3 is an idea.
 Each sample is the pixel under its centre, so a photo shrunk ten times or more
 aliases into noise. Averaging a few points inside each sample's footprint
 (four to sixteen) would cure it at that many reads a sample; the windowed
-conversion keeps the cost on screen cells, about 3 ms for 7,500 cells today.
+conversion keeps the cost on screen cells, about 1.5 ms for 7,500 cells today.
 The cells would differ from today's, so vif's sample is regenerated with it.
 
 ### Partly transparent cells
@@ -37,7 +37,7 @@ walls and the TUI's backdrop already allow a whole cell.
 A caller that draws its own glyphs over a frame needs only a mean background
 color under those cells, and a frame that changed in places needs only the
 changed cells converted again. A `ConvertRect` variant taking a per-cell mask
-of fit, mean color alone, or leave as is would close it; the fit is four
+of fit, mean color alone, or leave as is would close it; the fit is three
 fifths of a window's time.
 
 ## Format

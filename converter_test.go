@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"math/rand/v2"
 	"strings"
 	"testing"
 
+	lcolor "github.com/lixenwraith/color"
 	"github.com/lixenwraith/terminal"
 )
 
@@ -106,6 +108,65 @@ func TestKnownImageTypeConvertsToTheCellsAtGives(t *testing.T) {
 					t.Fatalf("%T %v: pixel %d,%d is %+v, At gives %+v", img, img.Bounds(), i%w, i/w, got[i], want[i])
 				}
 			}
+		}
+	}
+}
+
+// TestFitQuadrantFitsAsTryingEverySplitDoes: the glyph and colors are those the
+// first best of all sixteen patterns gives, on random cells, flat ones, extremes
+// and cells whose splits tie
+func TestFitQuadrantFitsAsTryingEverySplitDoes(t *testing.T) {
+	every := func(px [4]lcolor.RGB) (rune, lcolor.RGB, lcolor.RGB) {
+		best, bestPattern := int(^uint(0)>>1), 0
+		var bestFg, bestBg lcolor.RGB
+		for pattern := range 16 {
+			var sum [2][3]int
+			var count [2]int
+			for i, p := range px {
+				side := (pattern >> i) & 1
+				sum[side][0], sum[side][1], sum[side][2] = sum[side][0]+int(p.R), sum[side][1]+int(p.G), sum[side][2]+int(p.B)
+				count[side]++
+			}
+			var c [2]lcolor.RGB
+			for side := range 2 {
+				if count[side] > 0 {
+					c[side] = lcolor.RGB{R: uint8(sum[side][0] / count[side]), G: uint8(sum[side][1] / count[side]), B: uint8(sum[side][2] / count[side])}
+				}
+			}
+			err := 0
+			for i, p := range px {
+				q := c[(pattern>>i)&1]
+				dr, dg, db := int(p.R)-int(q.R), int(p.G)-int(q.G), int(p.B)-int(q.B)
+				err += dr*dr + dg*dg + db*db
+			}
+			if err < best {
+				best, bestPattern, bestFg, bestBg = err, pattern, c[1], c[0]
+			}
+		}
+		return QuadrantChars[bestPattern], bestFg, bestBg
+	}
+	rng := rand.New(rand.NewPCG(3, 5))
+	palette := []lcolor.RGB{{}, {R: 255, G: 255, B: 255}, {R: 255}, {G: 255}, {B: 255}, {R: 1, G: 2, B: 3}, {R: 128, G: 128, B: 128}}
+	cells := make([][4]lcolor.RGB, 0, 300000)
+	for range 200000 {
+		var px [4]lcolor.RGB
+		for i := range px {
+			px[i] = lcolor.RGB{R: uint8(rng.IntN(256)), G: uint8(rng.IntN(256)), B: uint8(rng.IntN(256))}
+		}
+		cells = append(cells, px)
+	}
+	for range 100000 {
+		var px [4]lcolor.RGB
+		for i := range px {
+			px[i] = palette[rng.IntN(len(palette))]
+		}
+		cells = append(cells, px)
+	}
+	for _, px := range cells {
+		r, fg, bg := FitQuadrant(px)
+		wr, wfg, wbg := every(px)
+		if r != wr || fg != wfg || bg != wbg {
+			t.Fatalf("%v fits %q %v %v, every split %q %v %v", px, r, fg, bg, wr, wfg, wbg)
 		}
 	}
 }
