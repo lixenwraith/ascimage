@@ -215,59 +215,51 @@ func FitQuadrant(pixels [4]lcolor.RGB) (rune, lcolor.RGB, lcolor.RGB) {
 	if pixels[0] == pixels[1] && pixels[1] == pixels[2] && pixels[2] == pixels[3] {
 		return QuadrantChars[0], lcolor.RGB{}, pixels[0]
 	}
-	var r, g, b [4]int
-	for i, p := range pixels {
-		r[i], g[i], b[i] = int(p.R), int(p.G), int(p.B)
+	ch := [3][4]uint32{
+		{uint32(pixels[0].R), uint32(pixels[1].R), uint32(pixels[2].R), uint32(pixels[3].R)},
+		{uint32(pixels[0].G), uint32(pixels[1].G), uint32(pixels[2].G), uint32(pixels[3].G)},
+		{uint32(pixels[0].B), uint32(pixels[1].B), uint32(pixels[2].B), uint32(pixels[3].B)},
 	}
-	tr, tg, tb := r[0]+r[1]+r[2]+r[3], g[0]+g[1]+g[2]+g[3], b[0]+b[1]+b[2]+b[3]
-	bestError, bestPattern := int(^uint(0)>>1), 0
-	var bestFg, bestBg lcolor.RGB
-	for pattern := range 8 {
-		var fr, fg, fb, n int
-		for i := range 3 {
-			if pattern&(1<<i) != 0 {
-				fr, fg, fb, n = fr+r[i], fg+g[i], fb+b[i], n+1
-			}
-		}
-		fore := lcolor.RGB{R: mean(fr, n), G: mean(fg, n), B: mean(fb, n)}
-		back := lcolor.RGB{R: mean(tr-fr, 4-n), G: mean(tg-fg, 4-n), B: mean(tb-fb, 4-n)}
-		err := 0
-		for i := range 4 {
-			c := back
-			if pattern&(1<<i) != 0 {
-				c = fore
-			}
-			err += colorDistanceSq(pixels[i], c)
-		}
-		if err < bestError {
-			bestError, bestPattern, bestFg, bestBg = err, pattern, fore, back
-		}
+	// A side of n samples summing s, shown at its truncated mean m, is off by its
+	// samples' squares less m(2s - nm): the split whose sides gain most is the fit
+	var g0, g1, g2, g3, g4, g5, g6, g7 uint32
+	for c := range ch {
+		p0, p1, p2, p3 := ch[c][0], ch[c][1], ch[c][2], ch[c][3]
+		t := p0 + p1 + p2 + p3
+		g0 += sideGain(t, 4)
+		g1 += p0*p0 + sideGain(t-p0, 3)
+		g2 += p1*p1 + sideGain(t-p1, 3)
+		g3 += sideGain(p0+p1, 2) + sideGain(p2+p3, 2)
+		g4 += p2*p2 + sideGain(t-p2, 3)
+		g5 += sideGain(p0+p2, 2) + sideGain(p1+p3, 2)
+		g6 += sideGain(p1+p2, 2) + sideGain(p0+p3, 2)
+		g7 += p3*p3 + sideGain(t-p3, 3)
 	}
-	return QuadrantChars[bestPattern], bestFg, bestBg
+	// A gain keyed above its split's rank, so the greatest key is the first best
+	key := max(g0<<3|7, g1<<3|6, g2<<3|5, g3<<3|4, g4<<3|3, g5<<3|2, g6<<3|1, g7<<3)
+	best := 7 - key&7
+	m0, m1, m2 := -(best & 1), -(best >> 1 & 1), -(best >> 2)
+	n := best&1 + best>>1&1 + best>>2
+	var fore, back [3]uint8
+	for c := range ch {
+		f := ch[c][0]&m0 + ch[c][1]&m1 + ch[c][2]&m2
+		t := ch[c][0] + ch[c][1] + ch[c][2] + ch[c][3]
+		fore[c], back[c] = uint8(f*meanScale[n]>>16), uint8((t-f)*meanScale[4-n]>>16)
+	}
+	return QuadrantChars[best], lcolor.RGB{R: fore[0], G: fore[1], B: fore[2]}, lcolor.RGB{R: back[0], G: back[1], B: back[2]}
 }
 
-// mean is a side's channel over its n samples, truncated as division truncates;
-// each constant divisor compiles to a shift or a multiply
-func mean(sum, n int) uint8 {
-	switch n {
-	case 1:
-		return uint8(sum)
-	case 2:
-		return uint8(sum / 2)
-	case 3:
-		return uint8(sum / 3)
-	case 4:
-		return uint8(sum / 4)
-	}
-	return 0
+// sideGain is what a side of n samples summing s takes off the error at its
+// truncated mean; n is a constant at every call, so the division is a shift or a
+// multiply
+func sideGain(s, n uint32) uint32 {
+	m := s / n
+	return m * (2*s - n*m)
 }
 
-func colorDistanceSq(a, b lcolor.RGB) int {
-	dr := int(a.R) - int(b.R)
-	dg := int(a.G) - int(b.G)
-	db := int(a.B) - int(b.B)
-	return dr*dr + dg*dg + db*db
-}
+// meanScale[n] times a sum of n samples, shifted down 16, is their truncated mean,
+// exact for the sums four 8-bit samples reach; a side of none reads zero
+var meanScale = [5]uint32{0, 1 << 16, 1 << 15, 1<<16/3 + 1, 1 << 14}
 
 // sampleRGB is a pixel's color, its alpha divided out, and whether it shows at all
 func sampleRGB(c color.Color) (lcolor.RGB, bool) { return unmultiply(c.RGBA()) }
