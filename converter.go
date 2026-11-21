@@ -208,69 +208,58 @@ func (s *sampler) cell(x, y int) DualCell {
 }
 
 // FitQuadrant returns the quadrant glyph and its two colors that show a cell's four
-// quadrants, UL UR LL LR, with the least squared error
+// quadrants, UL UR LL LR, with the least squared error, each color the mean of its
+// side. A split and its complement fit alike and the first of equals wins, so only
+// the eight leaving the lower right to the background are tried.
 func FitQuadrant(pixels [4]lcolor.RGB) (rune, lcolor.RGB, lcolor.RGB) {
-	bestError := int(^uint(0) >> 1)
-	bestPattern := 0
+	if pixels[0] == pixels[1] && pixels[1] == pixels[2] && pixels[2] == pixels[3] {
+		return QuadrantChars[0], lcolor.RGB{}, pixels[0]
+	}
+	var r, g, b [4]int
+	for i, p := range pixels {
+		r[i], g[i], b[i] = int(p.R), int(p.G), int(p.B)
+	}
+	tr, tg, tb := r[0]+r[1]+r[2]+r[3], g[0]+g[1]+g[2]+g[3], b[0]+b[1]+b[2]+b[3]
+	bestError, bestPattern := int(^uint(0)>>1), 0
 	var bestFg, bestBg lcolor.RGB
-
-	for pattern := range 16 {
-		fg, bg, err := computePatternColors(pixels, pattern)
+	for pattern := range 8 {
+		var fr, fg, fb, n int
+		for i := range 3 {
+			if pattern&(1<<i) != 0 {
+				fr, fg, fb, n = fr+r[i], fg+g[i], fb+b[i], n+1
+			}
+		}
+		fore := lcolor.RGB{R: mean(fr, n), G: mean(fg, n), B: mean(fb, n)}
+		back := lcolor.RGB{R: mean(tr-fr, 4-n), G: mean(tg-fg, 4-n), B: mean(tb-fb, 4-n)}
+		err := 0
+		for i := range 4 {
+			c := back
+			if pattern&(1<<i) != 0 {
+				c = fore
+			}
+			err += colorDistanceSq(pixels[i], c)
+		}
 		if err < bestError {
-			bestError = err
-			bestPattern = pattern
-			bestFg = fg
-			bestBg = bg
+			bestError, bestPattern, bestFg, bestBg = err, pattern, fore, back
 		}
 	}
-
 	return QuadrantChars[bestPattern], bestFg, bestBg
 }
 
-func computePatternColors(pixels [4]lcolor.RGB, pattern int) (fg, bg lcolor.RGB, totalError int) {
-	var fgR, fgG, fgB, fgCount int
-	var bgR, bgG, bgB, bgCount int
-
-	for i := range 4 {
-		if pattern&(1<<i) != 0 {
-			fgR += int(pixels[i].R)
-			fgG += int(pixels[i].G)
-			fgB += int(pixels[i].B)
-			fgCount++
-		} else {
-			bgR += int(pixels[i].R)
-			bgG += int(pixels[i].G)
-			bgB += int(pixels[i].B)
-			bgCount++
-		}
+// mean is a side's channel over its n samples, truncated as division truncates;
+// each constant divisor compiles to a shift or a multiply
+func mean(sum, n int) uint8 {
+	switch n {
+	case 1:
+		return uint8(sum)
+	case 2:
+		return uint8(sum / 2)
+	case 3:
+		return uint8(sum / 3)
+	case 4:
+		return uint8(sum / 4)
 	}
-
-	if fgCount > 0 {
-		fg = lcolor.RGB{
-			R: uint8(fgR / fgCount),
-			G: uint8(fgG / fgCount),
-			B: uint8(fgB / fgCount),
-		}
-	}
-	if bgCount > 0 {
-		bg = lcolor.RGB{
-			R: uint8(bgR / bgCount),
-			G: uint8(bgG / bgCount),
-			B: uint8(bgB / bgCount),
-		}
-	}
-
-	for i := range 4 {
-		var target lcolor.RGB
-		if pattern&(1<<i) != 0 {
-			target = fg
-		} else {
-			target = bg
-		}
-		totalError += colorDistanceSq(pixels[i], target)
-	}
-
-	return fg, bg, totalError
+	return 0
 }
 
 func colorDistanceSq(a, b lcolor.RGB) int {

@@ -59,10 +59,10 @@ topic; delete a note that proves wrong or that a document now states.
 
 ## Measuring
 
-- A quadrant window is mostly the fit: `FitQuadrant` is four fifths of a 160x48
-  window's 2.8 ms, and placing its 30,720 samples costs 0.4 ms before one is
-  read, so how a pixel is read moves the window by a tenth. Background mode fits
-  nothing: time a change to the read there.
+- A quadrant window is mostly the fit: `FitQuadrant` is three fifths of a 160x48
+  window's 1.5 ms and reading its 30,720 samples a quarter, so how a pixel is
+  read moves the window by a fifth. Background mode fits nothing: time a change
+  to the read there.
 - A shared container's timings swing a tenth from run to run. Build each tree's
   test binary (`go test -c`), run them in turn on one core (`taskset -c`) a dozen
   rounds, and compare with `benchstat` (`go install
