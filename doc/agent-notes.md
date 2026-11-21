@@ -59,10 +59,14 @@ topic; delete a note that proves wrong or that a document now states.
 
 ## Measuring
 
-- A quadrant window is mostly the fit: `FitQuadrant` is three fifths of a 160x48
-  window's 1.5 ms and reading its 30,720 samples a quarter, so how a pixel is
-  read moves the window by a fifth. Background mode fits nothing: time a change
-  to the read there.
+- A quadrant window is mostly the read: reading its 30,720 samples is over two
+  fifths of a 160x48 window's 0.7 ms and `FitQuadrant` three tenths, so how a
+  pixel is read moves the window most. Background mode fits nothing: time a
+  change to the read there.
+- The fit's error is integer arithmetic on truncated means, so a rewrite keeps
+  every cell only if it keeps that arithmetic: a side's error from its sum
+  alone is its samples' squares less `m(2s - nm)`, which no rounding touches.
+  Cells a few levels apart are where a rewrite that rounds otherwise shows.
 - A shared container's timings swing a tenth from run to run. Build each tree's
   test binary (`go test -c`), run them in turn on one core (`taskset -c`) a dozen
   rounds, and compare with `benchstat` (`go install

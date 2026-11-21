@@ -113,8 +113,8 @@ func TestKnownImageTypeConvertsToTheCellsAtGives(t *testing.T) {
 }
 
 // TestFitQuadrantFitsAsTryingEverySplitDoes: the glyph and colors are those the
-// first best of all sixteen patterns gives, on random cells, flat ones, extremes
-// and cells whose splits tie
+// first best of all sixteen patterns gives, on random cells, flat ones, extremes,
+// cells whose splits tie and cells a few levels apart, where truncation decides
 func TestFitQuadrantFitsAsTryingEverySplitDoes(t *testing.T) {
 	every := func(px [4]lcolor.RGB) (rune, lcolor.RGB, lcolor.RGB) {
 		best, bestPattern := int(^uint(0)>>1), 0
@@ -147,7 +147,7 @@ func TestFitQuadrantFitsAsTryingEverySplitDoes(t *testing.T) {
 	}
 	rng := rand.New(rand.NewPCG(3, 5))
 	palette := []lcolor.RGB{{}, {R: 255, G: 255, B: 255}, {R: 255}, {G: 255}, {B: 255}, {R: 1, G: 2, B: 3}, {R: 128, G: 128, B: 128}}
-	cells := make([][4]lcolor.RGB, 0, 300000)
+	cells := make([][4]lcolor.RGB, 0, 500000)
 	for range 200000 {
 		var px [4]lcolor.RGB
 		for i := range px {
@@ -159,6 +159,15 @@ func TestFitQuadrantFitsAsTryingEverySplitDoes(t *testing.T) {
 		var px [4]lcolor.RGB
 		for i := range px {
 			px[i] = palette[rng.IntN(len(palette))]
+		}
+		cells = append(cells, px)
+	}
+	for range 200000 {
+		var px [4]lcolor.RGB
+		base, spread := [3]int{rng.IntN(256), rng.IntN(256), rng.IntN(256)}, 2+rng.IntN(12)
+		for i := range px {
+			near := func(v int) uint8 { return uint8(min(max(v+rng.IntN(spread)-spread/2, 0), 255)) }
+			px[i] = lcolor.RGB{R: near(base[0]), G: near(base[1]), B: near(base[2])}
 		}
 		cells = append(cells, px)
 	}
